@@ -28,15 +28,15 @@ def train_model(model, dataloaders, criterion, optimizer, scheduler, num_epochs=
         print('-' * 10)
 
         # Each epoch has a training and validation phase
-        for phase in ['train', 'val']:
+        for phase in ['train', 'validate']:
             if phase == 'train':
                 scheduler.step()
                 model.train()  # Set model to training mode
             else:
                 model.eval()   # Set model to evaluate mode
 
-            running_loss = 0.0
-            running_corrects = 0
+            running_loss = torch.zeros(1, dtype=torch.double)
+            running_corrects = torch.zeros(1, dtype=torch.int)
             
             num_iter_per_epoch = len(dataloaders[phase])
             progress_bar = tqdm(enumerate(dataloaders[phase]), total=num_iter_per_epoch)
@@ -64,12 +64,13 @@ def train_model(model, dataloaders, criterion, optimizer, scheduler, num_epochs=
                 # statistics
                 running_loss += loss.item() * inputs.size(0)
                 running_corrects += torch.sum(preds == labels.data)
+                
 
-            epoch_loss = running_loss / dataset_sizes[phase]
-            epoch_acc = running_corrects.double() / dataset_sizes[phase]
+            epoch_loss = running_loss / num_iter_per_epoch
+            epoch_acc = running_corrects.double() / num_iter_per_epoch
 
-            print('{} Loss: {:.4f} Acc: {:.4f}'.format(
-                phase, epoch_loss, epoch_acc))
+            print('{} Loss: {} Acc: {}'.format(
+                phase, str(epoch_loss.numpy()), str(epoch_acc.numpy())))
 
             # deep copy the model
             if phase == 'val' and epoch_acc > best_acc:
