@@ -14,28 +14,7 @@ from torch.utils.data import DataLoader
 from torchvision import transforms
 from torchvision.datasets import ImageFolder
 
-# The set of preprocessing transforms to perform on the training examples
-# Note: some of the pre-processing steps for the training data are meant to regularize (e.g. RandomHorizontalFlip)
-# so we don't perform these on the validation data
-#
-# This data-structure is not very pure since it contains some knowledge of the model inputs
-# and it contains some hard-coded summary statistics of the data being trained
-data_transforms = {
-    'train': transforms.Compose([
-        transforms.Resize(224),  # The input size of Resnet18 (I think)
-        transforms.RandomHorizontalFlip(),
-        transforms.ToTensor(),
-        # TODO calculate the dataset per-channel mean and stddev
-        #transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-    ]),
-    'validate': transforms.Compose([
-        transforms.Resize(224),
-        transforms.ToTensor(),
-        #transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-    ]),
-}
-
-def get_image_datasets(data_dir):
+def get_image_datasets(data_dir, transforms=None):
     """
     The ImageFolder dataset class expects to see:
     root_dir/class1/image1.png
@@ -47,20 +26,20 @@ def get_image_datasets(data_dir):
     This dataset then yields a tuple of (image, label)
     """
     datasets = {}
-    for phase in data_transforms:
+    for phase in transforms:
         datasets[phase] = ImageFolder(
             os.path.join(data_dir, phase),
-            data_transforms[phase]
+            transforms[phase],
         )
     return datasets
 
-def get_image_dataloaders(data_dir, **params):
+def get_image_dataloaders(data_dir, transforms=None, **params):
     """
     Construct a DataLoader for each of the image datasets that will provide batches
     of data to the model to train
     """
     dataloaders = {}
-    for phase, dataset in get_image_datasets(data_dir).items():
+    for phase, dataset in get_image_datasets(data_dir, transforms=transforms).items():
         dataloaders[phase] = DataLoader(dataset, **params)
     return dataloaders
 

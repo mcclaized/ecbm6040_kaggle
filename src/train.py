@@ -18,6 +18,8 @@ def train_model(model, dataloaders, criterion, optimizer, scheduler, num_epochs=
     """
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     
+    model = model.to(device)
+    
     since = time.time()
 
     best_model_wts = copy.deepcopy(model.state_dict())
@@ -35,6 +37,7 @@ def train_model(model, dataloaders, criterion, optimizer, scheduler, num_epochs=
             else:
                 model.eval()   # Set model to evaluate mode
 
+            num_samples = torch.zeros(1, dtype=torch.int)
             running_loss = torch.zeros(1, dtype=torch.double)
             running_corrects = torch.zeros(1, dtype=torch.int)
             
@@ -44,7 +47,7 @@ def train_model(model, dataloaders, criterion, optimizer, scheduler, num_epochs=
             # Iterate over data.
             for batch_idx, (inputs, labels) in progress_bar:
                 inputs = inputs.to(device)
-                labels = labels.to(device)
+                labels = labels.to(device).view(-1,1).float()
 
                 # zero the parameter gradients
                 optimizer.zero_grad()
@@ -53,7 +56,6 @@ def train_model(model, dataloaders, criterion, optimizer, scheduler, num_epochs=
                 # track history if only in train
                 with torch.set_grad_enabled(phase == 'train'):
                     outputs = model(inputs)
-                    _, preds = torch.max(outputs, 1)
                     loss = criterion(outputs, labels)
 
                     # backward + optimize only if in training phase
@@ -62,18 +64,31 @@ def train_model(model, dataloaders, criterion, optimizer, scheduler, num_epochs=
                         optimizer.step()
 
                 # statistics
+                num_samples += inputs.size(0)
                 running_loss += loss.item() * inputs.size(0)
-                running_corrects += torch.sum(preds == labels.data)
+                running_corrects += torch.sum((outputs >= 0.5).float() == labels.data)
+                
+                if batch_idx and not batch_idx % 200 and phase == "train":
+                    print(
+                        'Epoch: {} Training Batch: {} Loss: {} Acc: {}'.format(
+                            epoch, batch_idx, 
+                            float(running_loss) / float(num_samples),
+                            float(running_corrects) / float(num_samples)
+                        )
+                    )
                 
 
-            epoch_loss = running_loss / num_iter_per_epoch
-            epoch_acc = running_corrects.double() / num_iter_per_epoch
+            epoch_loss = float(running_loss) / float(num_samples)
+            epoch_acc = float(running_corrects) / float(num_samples)
 
-            print('{} Loss: {} Acc: {}'.format(
-                phase, str(epoch_loss.numpy()), str(epoch_acc.numpy())))
+            print(
+                '{} Loss: {} Acc: {}'.format(
+                    phase, epoch_loss, epoch_acc
+                )
+            )
 
             # deep copy the model
-            if phase == 'val' and epoch_acc > best_acc:
+            if phase == 'validate' and epoch_acc > best_acc:
                 best_acc = epoch_acc
                 best_model_wts = copy.deepcopy(model.state_dict())
 
@@ -87,3 +102,23 @@ def train_model(model, dataloaders, criterion, optimizer, scheduler, num_epochs=
     # load best model weights
     model.load_state_dict(best_model_wts)
     return model
+
+def validate_model(model, validation_dataloader, num_batches=1):
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    all_inputs = []
+    all_labels = []
+    all_preds = []
+    for idx, (inputs, labels) in enumerate(validation_dataloader):
+        inputs = inputs.to(device)
+        labels = labels.to(device)
+        with torch.set_grad_enabled(False):  # No tracking during validation
+            outputs = model(inputs)
+        preds = (outputs >= 0.5).squeeze().long()
+        all_inputs.append(inputs)
+        all_labels.append(labels)
+        all_preds.append(preds)
+        if num_batches is not None and idx == (num_batches - 1):
+            break
+    
+    return torch.cat(all_inputs).cpu(), torch.cat(all_labels).cpu(), torch.cat(all_preds).cpu()
+    
